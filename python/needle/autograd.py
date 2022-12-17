@@ -56,7 +56,7 @@ class Op:
         raise NotImplementedError()
 
     def gradient_as_tuple(self, out_grad: "Value", node: "Value") -> Tuple["Value"]:
-        """ Convenience method to always return a tuple from gradient call"""
+        """Convenience method to always return a tuple from gradient call"""
         output = self.gradient(out_grad, node)
         if isinstance(output, tuple):
             return output
@@ -67,7 +67,7 @@ class Op:
 
 
 class TensorOp(Op):
-    """ Op class specialized to output tensors, will be alterate subclasses for other structures """
+    """Op class specialized to output tensors, will be alterate subclasses for other structures"""
 
     def __call__(self, *args):
         return Tensor.make_from_op(self, args)
@@ -150,12 +150,6 @@ class Value:
                 return value.detach()
             value.realize_cached_data()
         return value
-
-    def numpy(self):
-        data = self.realize_cached_data()
-        if array_api is numpy:
-            return data
-        return data.numpy() if not isinstance(data, tuple) else [x.numpy() for x in data]
 
 
 ### Not needed in HW1
@@ -283,8 +277,9 @@ class Tensor(Value):
     @property
     def device(self):
         data = self.realize_cached_data()
+        # numpy array always sits on cpu
         if array_api is numpy:
-            return default_device()
+            return cpu()
         return data.device
 
     def backward(self, out_grad=None):
@@ -301,6 +296,12 @@ class Tensor(Value):
     def __str__(self):
         return self.realize_cached_data().__str__()
 
+    def numpy(self):
+        data = self.realize_cached_data()
+        if array_api is numpy:
+            return data
+        return data.numpy()
+
     def __add__(self, other):
         if isinstance(other, Tensor):
             return needle.ops.EWiseAdd()(self, other)
@@ -315,7 +316,10 @@ class Tensor(Value):
 
     def __pow__(self, other):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        if isinstance(other, Tensor):
+            raise NotImplementedError()
+        else:
+            return needle.ops.PowerScalar(other)(self)
         ### END YOUR SOLUTION
 
     def __sub__(self, other):
@@ -323,12 +327,6 @@ class Tensor(Value):
             return needle.ops.EWiseAdd()(self, needle.ops.Negate()(other))
         else:
             return needle.ops.AddScalar(-other)(self)
-       
-    def __rsub__(self, other):
-        if isinstance(other, Tensor):
-            return needle.ops.EWiseAdd()(needle.ops.Negate()(self), other)
-        else:
-            return needle.ops.AddScalar(other)(-self)
 
     def __truediv__(self, other):
         if isinstance(other, Tensor):
@@ -359,6 +357,7 @@ class Tensor(Value):
 
     __radd__ = __add__
     __rmul__ = __mul__
+    __rsub__ = __sub__
     __rmatmul__ = __matmul__
 
 
@@ -377,7 +376,16 @@ def compute_gradient_of_variables(output_tensor, out_grad):
     reverse_topo_order = list(reversed(find_topo_sort([output_tensor])))
 
     ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
+    result = []
+    for i in reverse_topo_order:
+        i.grad = sum_node_list(node_to_output_grads_list[i])
+        if i.op != None:
+            partial_adjoints_i = i.op.gradient_as_tuple(i.grad, i)
+            for idx, k in enumerate(i.inputs):
+                if k in node_to_output_grads_list.keys():
+                    node_to_output_grads_list[k].append(partial_adjoints_i[idx])
+                else:
+                    node_to_output_grads_list[k] = [partial_adjoints_i[idx]]
     ### END YOUR SOLUTION
 
 
@@ -390,14 +398,24 @@ def find_topo_sort(node_list: List[Value]) -> List[Value]:
     sort.
     """
     ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
+    topo_order = []
+    visited = {}
+    for node in node_list:
+        if not node in visited.keys():
+            topo_sort_dfs(node, visited, topo_order)
+    return topo_order
     ### END YOUR SOLUTION
 
 
 def topo_sort_dfs(node, visited, topo_order):
     """Post-order DFS"""
     ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
+    if node == None or node in visited.keys():
+        return
+    visited[node] = True
+    for child in node.inputs:
+        topo_sort_dfs(child, visited, topo_order)
+    topo_order.append(node)
     ### END YOUR SOLUTION
 
 
